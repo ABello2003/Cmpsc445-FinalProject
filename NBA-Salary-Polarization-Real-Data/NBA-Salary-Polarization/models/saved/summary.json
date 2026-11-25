@@ -1,0 +1,12 @@
+{
+  "test_season": "2025",
+  "train_seasons": [
+    "2010",
+    "2024"
+  ],
+  "train_rows": 6809,
+  "test_rows": 489,
+  "k": 2,
+  "silhouette": 0.2873464690482071,
+  "sklearn_version": "1.9.1"
+}

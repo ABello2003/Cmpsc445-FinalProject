@@ -15,14 +15,16 @@ The application is hosted through Streamlit Community Cloud and can be accessed 
 
 - Interactive web application built with Streamlit.
 - Historical NBA salary and performance analysis from 2010–2025.
-- Salary inequality analysis using the Gini coefficient.
+- Salary inequality analysis using the Gini coefficient and top-10% payroll share.
+- Salary polarization analysis using the Wolfson polarization index and the share of players paid near the median.
+- Salaries compared as a share of each season's salary cap, so different eras are comparable.
 - Salary distribution and historical trend visualizations.
 - Player explorer with individual player statistics.
 - Side-by-side player comparison of salaries and performance.
-- K-Means clustering to identify salary and performance groups.
+- K-Means clustering to identify pay/performance tiers, with the number of clusters chosen by silhouette score.
 - Ridge Regression and Random Forest Regression for salary prediction.
-- Actual versus predicted salary comparisons.
-- Model evaluation using MAE, RMSE, R², and Silhouette Score.
+- Actual versus predicted salary comparisons, labeled as in-sample or out-of-sample.
+- Model evaluation using MAE, RMSE, R², a median baseline, permutation feature importance, and Silhouette Score.
 
 ## Technologies Used
 
@@ -39,17 +41,35 @@ The application is hosted through Streamlit Community Cloud and can be accessed 
 ## Machine Learning Models
 
 | Model | Learning Type | Purpose |
-| K-Means Clustering | Unsupervised Learning | Identify player groups based on salary and performance. |
+|---|---|---|
+| K-Means Clustering | Unsupervised Learning | Identify player groups based on salary (as cap share) and performance. |
 | Ridge Regression | Supervised Learning | Estimate player salaries using regularized linear regression. |
 | Random Forest Regression | Supervised Learning | Estimate player salaries using an ensemble of decision trees. |
 
+**Inputs:** 12 per-game and context statistics (age, games, games started, minutes, points, rebounds, assists, steals, blocks, FG%, 3P%, 3PA).
+**Output:** salary as a share of the season's salary cap (trained on its logarithm), converted back to dollars with that season's cap.
+**Evaluation:** chronological holdout. The models train on 2009-10 to 2023-24 and are tested on the unseen 2024-25 season.
+
+| Model (2024-25 holdout) | MAE | RMSE | R² |
+|---|---|---|---|
+| Median baseline | $8.30M | $13.61M | -0.196 |
+| Ridge | $5.53M | $8.99M | 0.479 |
+| Random Forest | $4.15M | $6.38M | 0.738 |
+
+Training on nominal dollars instead of cap share drops Random Forest to R² 0.566 and Ridge to 0.385, because the salary cap more than doubled over the period. Full results are in `models/saved/metrics.csv`.
+
 ## Polarization Analysis
 
-The project examines economic polarization within the NBA at three levels:
+Inequality and polarization are treated as different things:
 
-- **League Level:** Analyze historical salary inequality, salary distributions, and salary concentration.
-- **Group Level:** Identify distinct player groups using K-Means clustering.
-- **Individual Level:** Compare player salaries, performance statistics, and actual versus predicted salaries.
+- **Inequality:** how unevenly the payroll is split (Gini coefficient, top-10% payroll share).
+- **Polarization:** whether players are separating into a low-paid group and a high-paid group with a thinning middle (Wolfson polarization index; share of players paid 50%-150% of the median).
+
+The project examines this at three levels:
+
+- **League Level:** Inequality and polarization measures for every season, 2009-10 to 2024-25.
+- **Group Level:** K-Means clustering of pay and performance. Silhouette score is highest at k = 2, giving a lower tier and an upper tier.
+- **Individual Level:** Actual versus model-estimated salary, showing how much of the pay gap measured performance explains.
 
 The objective is to investigate salary disparities and determine the extent to which player performance can explain differences in compensation.
 
@@ -61,7 +81,7 @@ Follow the instructions below to run or modify the project locally.
 
 ### Prerequisites
 
-- Python 3.10 or newer, compatible with the project dependencies
+- Python 3.11 or newer (the pinned pandas 3 release requires it)
 - Git
 - Visual Studio Code (recommended)
 
@@ -96,10 +116,22 @@ Follow the instructions below to run or modify the project locally.
    python -m pip install -r requirements.txt
    ```
 
-6. Train the machine learning models if the saved models are missing or the dataset has been modified:
+6. (Optional) Rebuild the processed dataset from the raw CSV:
+
+   ```bash
+   python scripts/prepare_data.py
+   ```
+
+7. (Optional) Retrain the models if the saved models are missing or the dataset has changed:
 
    ```bash
    python models/train.py
+   ```
+
+8. (Optional) Run the tests:
+
+   ```bash
+   python -m pytest
    ```
 
 ## Usage
@@ -128,11 +160,11 @@ http://localhost:8501
 
 The application contains five interactive tabs:
 
-- **Salary Inequality:** Explore historical salary distributions, Gini coefficients, median salaries, and salary concentration.
+- **Inequality & Polarization:** Explore salary distributions and season-by-season Gini, top-10% share, Wolfson polarization, near-median share, and median salary as a share of the cap.
 - **Player Explorer:** View individual player statistics and compare two players' salaries, performance, salary differences, salary ratios, and predicted salaries.
-- **Clustering:** Visualize player groups generated using K-Means clustering.
-- **Salary Prediction:** Enter player performance statistics to estimate salaries using Ridge Regression or Random Forest Regression.
-- **Model Evaluation:** Compare machine learning models using MAE, RMSE, R², and clustering Silhouette Score.
+- **Clustering:** Visualize K-Means pay/performance tiers, their median profiles, and how the share of players in each tier changes over time.
+- **Salary Prediction:** Enter player statistics to estimate a salary (as a share of the cap and in dollars for a chosen season) using Ridge Regression or Random Forest Regression.
+- **Model Evaluation:** Compare models against a baseline using MAE, RMSE and R², view actual-vs-predicted results and permutation feature importance on the held-out season, and see the silhouette score for each number of clusters.
 
 Use the season selector to explore NBA player data from different years.
 
@@ -153,24 +185,31 @@ Cmpsc445-FinalProject/
 ├── README.md
 └── NBA-Salary-Polarization-Real-Data/
     └── NBA-Salary-Polarization/
-        ├── app.py
+        ├── app.py                      # Streamlit web application
         ├── README.md
-        ├── requirements.txt
-        ├── DATASET_REVIEW.md
+        ├── requirements.txt            # Pinned dependency versions
+        ├── DATASET_REVIEW.md           # Data source, processing, and known quirks
         ├── data/
-        │   ├── raw/
-        │   └── nba_players.csv
-        ├── models/
-        │   ├── train.py
-        │   └── saved/
-        │       ├── artifacts.joblib
-        │       ├── clustered_players.csv
-        │       └── metrics.csv
+        │   ├── raw/                    # Original source CSV
+        │   ├── salary_cap.csv          # NBA salary cap by season (with sources)
+        │   └── nba_players.csv         # Processed dataset (built by prepare_data.py)
         ├── scripts/
+        │   └── prepare_data.py         # Raw CSV -> processed dataset
+        ├── models/
+        │   ├── train.py                # Trains regression and clustering models
+        │   └── saved/
+        │       ├── artifacts.joblib        # Trained models
+        │       ├── clustered_players.csv   # Players with cluster tier labels
+        │       ├── cluster_selection.csv   # Silhouette score for k = 2..7
+        │       ├── feature_importance.csv  # Permutation importance (holdout)
+        │       ├── metrics.csv             # Holdout MAE / RMSE / R²
+        │       ├── summary.json            # Split sizes, chosen k, versions
+        │       └── test_predictions.csv    # Holdout actual vs predicted
         ├── tests/
-        │   └── test_analysis.py
+        │   ├── test_analysis.py
+        │   └── test_app.py
         └── utils/
-            └── analysis.py
+            └── analysis.py             # Cleaning + inequality/polarization measures
 ```
 
 ## Deployment
@@ -185,11 +224,13 @@ The hosted application runs independently of the developers' local computers.
 
 - Salary predictions are statistical estimates and do not determine a player's actual value or future contract.
 - Player salaries may be influenced by factors outside the dataset, including injuries, contract negotiations, experience, and market conditions.
-- Historical salaries are expressed in nominal dollars and are not adjusted for inflation or changes in the NBA salary cap.
-- Salary inequality and individual salary disparities do not independently establish the existence of distinct polarized groups.
+- Salaries are compared as a share of the salary cap rather than adjusted for general inflation. Gini, top-10% share and Wolfson do not depend on the salary scale.
+- Same-season statistics describe pay; they do not predict future contracts, because contracts are usually signed based on earlier seasons.
+- Very small salaries (10-day and partial contracts) and players with few games are kept, which lowers the bottom of the distribution. See `DATASET_REVIEW.md`.
+- The best clustering has a silhouette score of only about 0.29, so the two tiers overlap and players form a continuum rather than two fully separate populations.
 - The hosted application may temporarily enter sleep mode after inactivity and require restarting through the website.
 
-## Important Note
+## Data Source
 
-The project uses real historical NBA data. Do not run the demonstration data generator, as it may overwrite the real dataset with synthetic player records.
-
+- Player statistics and salaries: `data/raw/NBA Player Stats and Salaries_2010-2025.csv`. **TODO: add the original source URL and license.**
+- Salary cap by season: `data/salary_cap.csv` (sources listed per row).
